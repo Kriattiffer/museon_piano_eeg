@@ -1,8 +1,7 @@
 from pylsl import StreamInlet, resolve_stream
-from matplotlib import pyplot as plt
-from scipy import signal
+# from scipy import signal
 import numpy as np
-import sys, os
+import sys, os, time
 
 class EEG_STREAM(object):
 	""" class for EEG\markers streaming, plotting and recording. """
@@ -29,16 +28,19 @@ class EEG_STREAM(object):
 			The array is mapped to disc for later use from classiffier process'''
 		record_length = 500*60*top_exp_length*1.2
 		array_shape = (record_length, number_of_channels)
-		print 'Creating array with dimensions %s...' %str(array_shape) 
-		a = np.memmap(mmapname, dtype='float', mode='w+', shape=(array_shape))
-		# a = np.zeros(array_shape, dtype = 'float')
+		print ('Creating array with dimensions %s...' %str(array_shape) )
+		# a = np.memmap(mmapname, dtype='float', mode='w+', shape=(array_shape))
+		a = np.zeros(array_shape, dtype = 'float')
 		a[:,0:9] = np.NAN
-		print '... done'
+		print ('... done')
 		return a
 
 	def fill_array(self, eeg_array, line_counter, data_chunk, timestamp_chunk, datatype = 'EEG'):
 		'''Recieves preallocated array of NaNs, piece of data, piece of offsets and number of line, inserts everything into array. Works both with EEG and with markers '''
-		length = len(timestamp_chunk)
+		if type(timestamp_chunk) != float:
+			length = len(timestamp_chunk)
+		else:
+			length = 1
 		eeg_array[line_counter:line_counter+length, 0] = timestamp_chunk
 		eeg_array[line_counter:line_counter+length,1:] = data_chunk
 	
@@ -49,16 +51,18 @@ class EEG_STREAM(object):
 		# while 1: #self.stop != True:	
 			# pull chunks if Steam_eeg and stream_markess are True	
 		try:
-			EEG, timestamp_eeg = self.ie.pull_chunk()
+			EEG, timestamp_eeg = self.ie.pull_sample()
 		except:
 			EEG, timestamp_eeg = [], []
 
 		if timestamp_eeg:
 			self.fill_array(self.EEG_ARRAY, self.line_counter, EEG, timestamp_eeg, datatype = 'EEG')
-			self.line_counter += len(timestamp_eeg)
+			self.line_counter +=1
+			# self.line_counter += len(timestamp_eeg)
 			if self.line_counter>self.sample_length and self.line_counter % 10 == 0:
-				FFT = self.compute_fft(self.EEG_ARRAY, self.line_counter, sample_length = self.sample_length)
-				return FFT
+				# FFT = self.compute_fft(self.EEG_ARRAY, self.line_counter, sample_length = self.sample_length)
+				print (timestamp_eeg,EEG)
+				#return FFT
 
 	def butter_filt(self, data, cutoff_array, fs = 500, order=4):
 	    nyq = 0.5 * fs
@@ -78,7 +82,9 @@ class EEG_STREAM(object):
 		fft = fft/10000
 		return fft
 
-if __name__ == '__main__':
-	Stream = EEG_STREAM(sample_length = 2000)
-	while 1:
-		Stream.plot_and_record()
+
+#Stream = EEG_STREAM(sample_length = 2000)
+#time.sleep(3)
+## for a in range(50):
+#while 1:
+#	Stream.plot_and_record()
