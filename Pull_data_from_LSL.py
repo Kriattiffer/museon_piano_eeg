@@ -164,8 +164,8 @@ class EEG_STREAM(object):
 		# fft_bands = [FFT[band]for band in [self.alpha, self.beta, self.gamma]]
 
 		data = pickle.dumps([fft_bands, acc])
-		print type(fft_bands[0][0])
-		print [fft_bands, acc]
+		# print type(fft_bands[0][0])
+		print acc[0]
 		# print fft_bands
 		self.conn.send(data)
 
@@ -191,5 +191,5 @@ class EEG_STREAM(object):
 		return fft
 
 if __name__ == '__main__':
-	Stream = EEG_STREAM(sample_length = 500, fft_interval = 50, fft_averaging_bin = 5, host = 'localhost')
+	Stream = EEG_STREAM(sample_length = 500, fft_interval = 50, fft_averaging_bin = 5, host = '192.168.17.17')
 	Stream.run_streams()
