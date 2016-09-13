@@ -6,14 +6,18 @@ import sys, os, time, socket, pickle
 
 class EEG_STREAM(object):
 	""" class for EEG\markers streaming, plotting and recording. """
-	def __init__(self, sample_length = 1000, fft_interval = 10, fft_averaging_bin = 10, max_fft_freq = 60, StreamEeg = True, StreamAcceleration = True, TCP_socket = True):
-		''' create objects for later use'''
-		self.StreamEeg, self.StreamAcceleration, self.TCP_socket, self.fft_interval, self.sample_length, self.fft_averaging_bin = StreamEeg, StreamAcceleration, TCP_socket, fft_interval, sample_length, fft_averaging_bin
+	def __init__(self, sample_length = 1000, fft_interval = 10, fft_averaging_bin = 10, max_fft_freq = 60, StreamEeg = True, StreamAcceleration = True, TCP_socket = True, host = 'localhost'):
+		''' create objects for later use.
+			sample_length (counts) - number of counts for computing FFT
+			fft_interval(ms) - shift os consequitive FFTs
+			fft_averaging_bin - number of fft matrices to average
+			max_fft_freq (Hz) - cutoff frequency for fft
+		'''
+		self.StreamEeg, self.StreamAcceleration, self.TCP_socket, self.fft_interval, self.sample_length, self.fft_averaging_bin, self.host = StreamEeg, StreamAcceleration, TCP_socket, fft_interval, sample_length, fft_averaging_bin, host
 		
 		self.EEG_ARRAY = self.create_array()
 		self.ACCEL_ARRAY = self.create_array(top_exp_length = 1, number_of_channels = 4)
 		self.ie, self.im =  self.create_streams()
-
 		self.line_counter = 0
 		self.line_counter_accel = 0
 		
@@ -78,7 +82,7 @@ class EEG_STREAM(object):
 		if self.TCP_socket == True:
 			print ('creating socket for TouchDesigner...')
 			self.TD_sock = socket.socket()
-			self.TD_sock.bind(('localhost', 50783))
+			self.TD_sock.bind((self.host, 50783))
 			self.TD_sock.listen(1)
 			print ('Waiting for incoming connection...')
 			self.conn, self.addr = self.TD_sock.accept()
@@ -187,5 +191,5 @@ class EEG_STREAM(object):
 		return fft
 
 if __name__ == '__main__':
-	Stream = EEG_STREAM(sample_length = 500, fft_interval = 50, fft_averaging_bin = 5)
+	Stream = EEG_STREAM(sample_length = 500, fft_interval = 50, fft_averaging_bin = 5, host = 'localhost')
 	Stream.run_streams()
