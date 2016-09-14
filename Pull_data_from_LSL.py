@@ -1,12 +1,75 @@
 from pylsl import StreamInlet, resolve_stream
 from scipy import signal
+from matplotlib import pyplot as plt
 import numpy as np
 import sys, os, time, socket, pickle
 ''' RUN WITH PYTHON27 '''
 
+class FFT_PLOT():
+	"""class for real-time plotting of FFT fot every channel"""
+	def __init__(self, sample_length, max_fft_freq=140, plot_to_second_screen = True):
+		''' here we createth plot object, to update it in loop. for performance we useth here powerful magic called 'blitting',  
+			that helpeth us to redraw only data, while keenping backround and axes intact. How it worketh remains unknown >>> look into it later!
+			max_fft_freq is cutoff frequency for fft_plot.'''
+
+		channels = ['1','2','3','4','5','6','7','8'] # need to set from config file		
+		self.sample_length = sample_length # number of samples to analyze
+		T = 500.0				#sampling rate, Hz
+		self.Bin_resolution = T/sample_length
+		self.max_fft_freq = max_fft_freq
+		###preallocate array for fourier vectors
+		self.fouriers = []
+		self.sft = 'list'
+		### create_plot ###
+		self.fig,self.axes = plt.subplots(nrows =3, ncols = 3)
+		self.axes = self.axes.flatten()[:-1]
+		if plot_to_second_screen == True:
+			plt.get_current_fig_manager().window.wm_geometry("-1920+0") # move FFT window tio second screen. Frame redraw in pesent.py starts to suck ==> possible problem with video card
+		self.fig.show()
+		self.backgrounds = [self.fig.canvas.copy_from_bbox(ax.bbox) for ax in self.axes]
+		x = np.arange(0, self.max_fft_freq, self.Bin_resolution)
+		y = np.arange(0,1,1.0/self.max_fft_freq*self.Bin_resolution)
+		y = y[x>=0]
+		print np.shape(x), np.shape(y)
+		self.lines = [ax.plot(x,y)[0] for ax in self.axes] #np.arange(0,1,1/119.0)	
+		[self.axes[i].set_title(channels[i], fontweight= 'bold',) for i in range(len(self.axes))]
+		self.fig.canvas.draw()
+
+	def update_fft(self, FFT, averaging_bin=10):
+		''' receives FFT vector, trimmes it to several points (whth 500 hz refresh rate it is 60 hz maximum), redraws plot.'''
+		if not plt.fignum_exists(1): # dosent't try to update closed figure # careful with additional figures!
+			return
+
+		FFT = np.abs(FFT[:self.max_fft_freq/self.Bin_resolution,:])
+		# print type(self.fouriers)
+		if self.sft == 'list':
+			if len(self.fouriers) < averaging_bin:
+				self.fouriers.append(FFT)
+			else:
+				self.fouriers = np.array(self.fouriers)
+				self.sft = type(self.fouriers)
+		else:
+			# print np.shape(self.fouriers[0:-1])
+			self.fouriers[0:-1] = self.fouriers[1:]
+			self.fouriers[-1] = FFT
+			FFT = np.average(self.fouriers, axis = 0)
+
+		for line, ax, background, channel  in zip(self.lines, self.axes, self.backgrounds, range(len(self.axes))):
+			self.fig.canvas.restore_region(background)			
+			line.set_ydata(FFT[:, channel])
+			# print np.argmax(FFT[:, channel])
+			ax.draw_artist(ax.patch)
+			ax.draw_artist(line)
+			self.fig.canvas.blit(ax.bbox)
+			# self.fig.canvas.update()
+			# self.fig.canvas.flush_events()
+		self.fig.canvas.start_event_loop(0.001) #0.1 ms seems enough
+
+
+
 class EEG_STREAM(object):
 	""" class for EEG\markers streaming, plotting and recording. """
-	def __init__(self, sample_length = 1000, fft_interval = 10, fft_averaging_bin = 10, max_fft_freq = 60, StreamEeg = True, StreamAcceleration = True, TCP_socket = True, host = 'localhost'):
+	def __init__(self, sample_length = 1000, fft_interval = 10, fft_averaging_bin = 10, max_fft_freq = 60, StreamEeg = True, StreamAcceleration = True, TCP_socket = True, host = 'localhost', plot_fft =True):
 		''' create objects for later use.
 			sample_length (counts) - number of counts for computing FFT
 			fft_interval(ms) - shift os consequitive FFTs
@@ -26,8 +89,12 @@ class EEG_STREAM(object):
 		self.Bin_resolution = T/sample_length
 		self.fourier_x = np.arange(0, max_fft_freq, self.Bin_resolution)
 		self.alpha = np.logical_and(self.fourier_x <12, self.fourier_x >8)
+		print self.fourier_x[self.alpha]
+
 		self.beta = np.logical_and(self.fourier_x <28, self.fourier_x >16)
 		self.gamma = np.logical_and(self.fourier_x <40, self.fourier_x >30)
+		if plot_fft == True:
+			self.plot = FFT_PLOT(max_fft_freq=60, sample_length = self.sample_length, plot_to_second_screen = False)
 
 	
 	def create_streams(self, stream_type_eeg = 'EEG', stream_name_accel = 'Accelerometer', recursion_meter = 0, max_recursion_depth = 3):
@@ -107,8 +174,9 @@ class EEG_STREAM(object):
 			length = len(timestamp_chunk)
 		else:
 			length = 1
+		# print len(data_chunk)
 		eeg_array[line_counter:line_counter+length, 0] = timestamp_chunk
-		eeg_array[line_counter:line_counter+length,1:] = data_chunk
+		eeg_array[line_counter:line_counter+length,1:] = data_chunk[0:8]
 	
 	def run_streams(self):
 		''' Main cycle for recording and plotting FFT. Pulls markers and eeg from lsl inlets, 
@@ -153,9 +221,11 @@ class EEG_STREAM(object):
 						self.fouriers[-1] = FFT
 						FFT = np.average(self.fouriers, axis = 0)	
 
+					self.plot.update_fft(FFT)
 					self.TD_PUSH(FFT, acc)
+
 					CurrentTime = time.time()*1000
-					# print (self.line_counter)
+					print (CurrentTime)
 
 	def TD_PUSH(self, FFT, acc):
 		FFT = np.abs(FFT)
@@ -165,7 +235,7 @@ class EEG_STREAM(object):
 
 		data = pickle.dumps([fft_bands, acc])
 		# print type(fft_bands[0][0])
-		print acc[0]
+		# print acc[0]
 		# print fft_bands
 		self.conn.send(data)
 
@@ -187,9 +257,9 @@ class EEG_STREAM(object):
 		ARRAY_SLICE =self.butter_filt(ARRAY_SLICE, [3,40])
 		fft = np.fft.rfft(ARRAY_SLICE, axis = 0)
 		fft[0] = 0
-		fft = fft
+		fft = fft/10000
 		return fft
 
 if __name__ == '__main__':
-	Stream = EEG_STREAM(sample_length = 500, fft_interval = 50, fft_averaging_bin = 5, host = '192.168.17.17')
+	Stream = EEG_STREAM(sample_length = 2000, fft_interval = 20, fft_averaging_bin = 10, host = '192.168.1.149', plot_fft = True)
 	Stream.run_streams()
