@@ -8,7 +8,7 @@ import sys, os, time, socket, pickle
 class FFT_PLOT():
 	"""class for real-time plotting of FFT fot every channel"""
 	def __init__(self, sample_length, max_fft_freq=140, plot_to_second_screen = True):
-		''' here we createth plot object, to update it in loop. for performance we useth here powerful magic called 'blitting',  
+		''' here we createth thy plot object, to update it in thy loop. for performance we useth thy powerful magic called 'blitting',  
 			that helpeth us to redraw only data, while keenping backround and axes intact. How it worketh remains unknown >>> look into it later!
 			max_fft_freq is cutoff frequency for fft_plot.'''
 
@@ -76,7 +76,7 @@ class EEG_STREAM(object):
 			fft_averaging_bin - number of fft matrices to average
 			max_fft_freq (Hz) - cutoff frequency for fft
 		'''
-		self.StreamEeg, self.StreamAcceleration, self.TCP_socket, self.fft_interval, self.sample_length, self.fft_averaging_bin, self.host = StreamEeg, StreamAcceleration, TCP_socket, fft_interval, sample_length, fft_averaging_bin, host
+		self.StreamEeg, self.StreamAcceleration, self.TCP_socket, self.fft_interval, self.sample_length, self.fft_averaging_bin, self.host, self.plot_fft = StreamEeg, StreamAcceleration, TCP_socket, fft_interval, sample_length, fft_averaging_bin, host, plot_fft
 		
 		self.EEG_ARRAY = self.create_array()
 		self.ACCEL_ARRAY = self.create_array(top_exp_length = 1, number_of_channels = 4)
@@ -93,7 +93,7 @@ class EEG_STREAM(object):
 
 		self.beta = np.logical_and(self.fourier_x <28, self.fourier_x >16)
 		self.gamma = np.logical_and(self.fourier_x <40, self.fourier_x >30)
-		if plot_fft == True:
+		if self.plot_fft == True:
 			self.plot = FFT_PLOT(max_fft_freq=60, sample_length = self.sample_length, plot_to_second_screen = False)
 
 	
@@ -149,7 +149,8 @@ class EEG_STREAM(object):
 		if self.TCP_socket == True:
 			print ('creating socket for TouchDesigner...')
 			self.TD_sock = socket.socket()
-			self.TD_sock.bind((self.host, 50783))
+			port = 50783
+			self.TD_sock.bind((self.host, port))
 			self.TD_sock.listen(1)
 			print ('Waiting for incoming connection...')
 			self.conn, self.addr = self.TD_sock.accept()
@@ -178,6 +179,11 @@ class EEG_STREAM(object):
 		eeg_array[line_counter:line_counter+length, 0] = timestamp_chunk
 		eeg_array[line_counter:line_counter+length,1:] = data_chunk[0:8]
 	
+	def update(self, FFT, acc):
+		if self.plot_fft == True:
+			self.plot.update_fft(FFT)
+		self.TD_PUSH(FFT, acc)
+
 	def run_streams(self):
 		''' Main cycle for recording and plotting FFT. Pulls markers and eeg from lsl inlets, 
 		fills preallocated arrays with data. After certain offset calculates FFT and updates plots. Records data on exit.'''
@@ -221,8 +227,7 @@ class EEG_STREAM(object):
 						self.fouriers[-1] = FFT
 						FFT = np.average(self.fouriers, axis = 0)	
 
-					self.plot.update_fft(FFT)
-					self.TD_PUSH(FFT, acc)
+					self.update(FFT, acc)
 
 					CurrentTime = time.time()*1000
 					print (CurrentTime)
@@ -238,9 +243,7 @@ class EEG_STREAM(object):
 		# print acc[0]
 		# print fft_bands
 		self.conn.send(data)
-
 		# print fft_bands
-
 
 	def butter_filt(self, data, cutoff_array, fs = 500, order=4):
 		'''Butterworth filter'''
@@ -257,9 +260,9 @@ class EEG_STREAM(object):
 		ARRAY_SLICE =self.butter_filt(ARRAY_SLICE, [3,40])
 		fft = np.fft.rfft(ARRAY_SLICE, axis = 0)
 		fft[0] = 0
-		fft = fft/10000
+		fft = fft/1000
 		return fft
 
 if __name__ == '__main__':
-	Stream = EEG_STREAM(sample_length = 2000, fft_interval = 20, fft_averaging_bin = 10, host = '192.168.1.149', plot_fft = True)
+	Stream = EEG_STREAM(sample_length = 1000, fft_interval = 40, fft_averaging_bin = 3, host = '192.168.0.2', plot_fft = True)
 	Stream.run_streams()
